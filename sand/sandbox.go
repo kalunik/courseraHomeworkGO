@@ -1,8 +1,9 @@
-package main
+/*package main
 
 import (
 	"fmt"
 )
+
 
 func main() {
 
@@ -76,4 +77,25 @@ func main() {
 	for key, val := range person {
 		fmt.Println("range map by key-val", key, val)
 	}
+}
+*/
+
+package main
+
+import "fmt"
+
+func test() int {
+	x := 0
+	defer func() {
+		fmt.Println(x, "bef")
+		x++
+		fmt.Println(x, "aft")
+	}()
+
+	x++
+	return x
+}
+
+func main() {
+	fmt.Println(test())
 }
