@@ -22,38 +22,52 @@ func main() {
 }
 
 func dirTree(out *os.File, path string, printFiles bool) error {
-	var err error
+	var lvl = 0
+	err := searchingNode(out, path, printFiles, lvl)
+	return err
+}
 
-	err = os.Chdir(path)
+func searchingNode(out *os.File, path string, printFiles bool, lvl int) error {
+	allFiles, err := os.ReadDir(path)
 	if err != nil {
 		return err
 	}
 
-	dir, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-
-	files, err := os.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-
-	for _, file := range files {
-
-		if file.IsDir() {
-			fmt.Print(file.Name(), "\n")
-			err = dirTree(out, file.Name(), printFiles)
-			if err != nil {
-				return err
+	var files []os.DirEntry
+	if printFiles {
+		files = allFiles
+	} else {
+		for _, file := range allFiles {
+			if file.IsDir() {
+				files = append(files, file)
 			}
-			err = os.Chdir("..")
-			if err != nil {
-				return err
-			}
-		} else {
-			continue
 		}
+	}
+	//fmt.Println(len(files), "!!")
+
+	for i, file := range files {
+		for j := 0; j < lvl; j++ {
+			if i != len(files)-1 {
+				fmt.Print("│")
+			}
+			fmt.Print("\t")
+		}
+		if i == len(files)-1 {
+			fmt.Print("└───")
+		} else {
+			fmt.Print("├───")
+		}
+		fmt.Print(file.Name(), " ", i, "\n")
+		//fmt.Print("│")
+		if file.IsDir() {
+			//mb | and \t here, it could be better
+			err := searchingNode(out, path+string(os.PathSeparator)+file.Name(), printFiles, lvl+1)
+			if err != nil {
+				return err
+			}
+		}
+		//if files
+		//fmt.Print("└───")
 	}
 	return err
 }
