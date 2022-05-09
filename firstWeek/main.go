@@ -22,12 +22,11 @@ func main() {
 }
 
 func dirTree(out *os.File, path string, printFiles bool) error {
-	var lvl = 0
-	err := searchingNode(out, path, printFiles, lvl)
+	err := searchingNode(out, path, printFiles, "")
 	return err
 }
 
-func searchingNode(out *os.File, path string, printFiles bool, lvl int) error {
+func searchingNode(out *os.File, path string, printFiles bool, prevIndent string) error {
 	allFiles, err := os.ReadDir(path)
 	if err != nil {
 		return err
@@ -43,31 +42,26 @@ func searchingNode(out *os.File, path string, printFiles bool, lvl int) error {
 			}
 		}
 	}
-	//fmt.Println(len(files), "!!")
+
+	var (
+		lastInd = len(files) - 1
+		prefix  = "├───"
+		indent  = "│\t"
+	)
 
 	for i, file := range files {
-		for j := 0; j < lvl; j++ {
-			if i != len(files)-1 {
-				fmt.Print("│")
-			}
-			fmt.Print("\t")
+		if i == lastInd {
+			prefix = "└───"
+			indent = "\t"
 		}
-		if i == len(files)-1 {
-			fmt.Print("└───")
-		} else {
-			fmt.Print("├───")
-		}
-		fmt.Print(file.Name(), " ", i, "\n")
-		//fmt.Print("│")
+		fmt.Print(prevIndent, prefix, file.Name(), "\n")
 		if file.IsDir() {
-			//mb | and \t here, it could be better
-			err := searchingNode(out, path+string(os.PathSeparator)+file.Name(), printFiles, lvl+1)
+			err := searchingNode(out, path+string(os.PathSeparator)+file.Name(), printFiles, prevIndent+indent)
 			if err != nil {
 				return err
 			}
 		}
-		//if files
-		//fmt.Print("└───")
+
 	}
 	return err
 }
