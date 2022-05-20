@@ -79,7 +79,7 @@ func main() {
 	}
 }
 */
-
+/*
 package main
 
 import "fmt"
@@ -98,4 +98,63 @@ func test() int {
 
 func main() {
 	fmt.Println(test())
+}
+*/
+
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+func ExecutePipeline(FlowJobs ...job) {
+	var in, out chan interface{}
+	var wg sync.WaitGroup
+
+	for _, j := range FlowJobs {
+		in = out
+		out := make(chan interface{}, 1)
+		wg.Add(1)
+		go func(j job, in, out chan interface{}) {
+			j(in, out)
+			defer wg.Done()
+			defer close(out)
+		}(j, in, out)
+		wg.Wait()
+	}
+}
+
+func main() {
+	//var in, out chan interface{}
+	freeFlowJobs := []job{
+		job(func(in, out chan interface{}) {
+			out <- 2
+			fmt.Println("in: ", <-in, " | 1 func executed")
+		}),
+		job(func(in, out chan interface{}) {
+			out <- 3
+			fmt.Println("2 func executed. ", "in: ", <-in)
+		}),
+	}
+	//freeFlowJobs := []job{
+	//	job(func(in, out chan interface{}) {
+	//		out <- 1
+	//		time.Sleep(10 * time.Millisecond)
+	//		currRecieved := atomic.LoadUint32(&recieved)
+	//		// в чем тут суть
+	//		// если вы накапливаете значения, то пока вся функция не отрабоатет - дальше они не пойдут
+	//		// тут я проверяю, что счетчик увеличился в следующей функции
+	//		// это значит что туда дошло значение прежде чем текущая функция отработала
+	//		if currRecieved == 0 {
+	//			ok = false
+	//		}
+	//	}),
+	//	job(func(in, out chan interface{}) {
+	//		for _ = range in {
+	//			atomic.AddUint32(&recieved, 1)
+	//		}
+	//	}),
+}
+ExecutePipeline(freeFlowJobs...)
 }
