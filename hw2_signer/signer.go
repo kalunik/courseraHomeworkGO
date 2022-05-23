@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"sync"
-	"time"
 )
 
 func ExecutePipeline(FlowJobs ...job) {
@@ -27,11 +26,16 @@ func ExecutePipeline(FlowJobs ...job) {
 
 var SingleHash = func(in, out chan interface{}) {
 	dataRaw := <-in
-	data := dataRaw.(string)
-	crc := DataSignerCrc32(data)
-	crcMd := DataSignerCrc32(DataSignerMd5(data))
-	fmt.Println()
+	//data := dataRaw.(string)
+	//Md := DataSignerMd5(data)
+	//crcMd := DataSignerCrc32(Md)
+	//crc := DataSignerCrc32(data)
 
+	fmt.Println(dataRaw, " SingleHash data ", dataRaw)
+	//fmt.Println(data," SingleHash md5(data) ", Md)
+	//fmt.Println(data," SingleHash crc32(md5(data)) ", crcMd)
+	//fmt.Println(data," SingleHash crc32(data) ", crc)
+	//fmt.Println(data," SingleHash result ", crc, "+", crcMd)
 }
 
 func main() {
@@ -64,6 +68,10 @@ func main() {
 			}),
 		}
 		ExecutePipeline(FreeFlowJobs...)*/
+
+	testExpected := "1173136728138862632818075107442090076184424490584241521304_1696913515191343735512658979631549563179965036907783101867_27225454331033649287118297354036464389062965355426795162684_29568666068035183841425683795340791879727309630931025356555_3994492081516972096677631278379039212655368881548151736_4958044192186797981418233587017209679042592862002427381542_4958044192186797981418233587017209679042592862002427381542"
+	testResult := "NOT_SET"
+
 	inputData := []int{0, 1}
 
 	hashSignJobs := []job{
@@ -79,13 +87,15 @@ func main() {
 			dataRaw := <-in
 			data, ok := dataRaw.(string)
 			if !ok {
-				t.Error("cant convert result data to string")
+				_ = fmt.Errorf("cant convert result data to string")
 			}
 			testResult = data
 		}),
 	}
 
-	start := time.Now()
-
 	ExecutePipeline(hashSignJobs...)
+
+	if testExpected != testResult {
+		_ = fmt.Errorf("results not match\nGot: %v\nExpected: %v", testResult, testExpected)
+	}
 }
