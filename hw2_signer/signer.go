@@ -25,17 +25,23 @@ func ExecutePipeline(FlowJobs ...job) {
 }
 
 var SingleHash = func(in, out chan interface{}) {
-	dataRaw := <-in
-	//data := dataRaw.(string)
-	//Md := DataSignerMd5(data)
-	//crcMd := DataSignerCrc32(Md)
-	//crc := DataSignerCrc32(data)
+	var (
+		crcMd,
+		crc string
+	)
+	for v := range in {
+		data := fmt.Sprint(v)
+		Md := DataSignerMd5(data)
+		crcMd := DataSignerCrc32(Md)
+		crc := DataSignerCrc32(data)
+		fmt.Println(data, " SingleHash data ", data)
+		fmt.Println(data, " SingleHash md5(data) ", Md)
+		fmt.Println(data, " SingleHash crc32(md5(data)) ", crcMd)
+		fmt.Println(data, " SingleHash crc32(data) ", crc)
+		fmt.Printf(" SingleHash result ", crc, "~", crcMd)
+	}
+	out <- fmt.Sprintf("%s~%s", crc, crcMd) // out must be in range, so then PANIC happen
 
-	fmt.Println(dataRaw, " SingleHash data ", dataRaw)
-	//fmt.Println(data," SingleHash md5(data) ", Md)
-	//fmt.Println(data," SingleHash crc32(md5(data)) ", crcMd)
-	//fmt.Println(data," SingleHash crc32(data) ", crc)
-	//fmt.Println(data," SingleHash result ", crc, "+", crcMd)
 }
 
 func main() {
