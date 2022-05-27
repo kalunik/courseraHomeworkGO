@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 func ExecutePipeline(FlowJobs ...job) {
@@ -28,35 +29,67 @@ func ExecutePipeline(FlowJobs ...job) {
 
 var SingleHash = func(in, out chan interface{}) {
 	for v := range in {
-		data := fmt.Sprint(v)
-		Md := DataSignerMd5(data)
-		crcMd := DataSignerCrc32(Md)
-		crc := DataSignerCrc32(data)
-		fmt.Println(data, "SingleHash data", data)
-		fmt.Println(data, "SingleHash md5(data)", Md)
-		fmt.Println(data, "SingleHash crc32(md5(data))", crcMd)
-		fmt.Println(data, "SingleHash crc32(data)", crc)
-		fmt.Printf("%s SingleHash result %s~%s\n", data, crc, crcMd)
-		out <- fmt.Sprintf("%s~%s", crc, crcMd) // out must be in range, so then PANIC happen
+		data := fmt.Sprint(v) //md crc : need mutex
+
+		//mu := &sync.Mutex{}
+
+		Md := make(chan string)
+		go func() {
+			defer close(Md)
+			//mu.Lock()
+			Md <- DataSignerMd5(data)
+			//mu.Unlock()
+		}()
+
+		crc := make(chan string)
+		go func() {
+			defer close(crc)
+			//mu.Lock()
+			crc <- DataSignerCrc32(data)
+			//mu.Unlock()
+		}()
+
+		crcMd := make(chan string)
+		go func() {
+			defer close(crcMd)
+			crcMd <- DataSignerCrc32(<-Md)
+		}()
+
+		//fmt.Println(data, "SingleHash data", data)
+		//fmt.Println(data, "SingleHash md5(data)", Md)
+		//fmt.Println(data, "SingleHash crc32(md5(data))", crcMd)
+		//fmt.Println(data, "SingleHash crc32(data)", crc)
+		//fmt.Printf("%s SingleHash result %s~%s\n", data, crc, crcMd)
+		out <- fmt.Sprintf("%s~%s", <-crc, <-crcMd) // out must be in range, so then PANIC happen
 	}
 }
 
 var MultiHash = func(in, out chan interface{}) {
 	var (
-		tmp, crc string
-		res      []string
+		crc, crcSum string
+		res         []string
+		wg          sync.WaitGroup
 	)
+	tmp := make(chan string)
 	for v := range in {
-		data := fmt.Sprint(v)
-		for th := 0; th < 6; th++ {
-			crc = DataSignerCrc32(fmt.Sprintf("%d%s", th, data))
-			fmt.Println(data, "MultiHash: crc32(th+step1)) ", th, crc)
-			tmp += crc
-		}
-		res = append(res, tmp)
-		fmt.Println(data, "MultiHash result:", tmp)
-		tmp = ""
+		wg.Add(1)
+		go func(v interface{}) {
+
+			defer wg.Done()
+			data := fmt.Sprint(v)
+			for th := 0; th < 6; th++ {
+				crc = DataSignerCrc32(fmt.Sprintf("%d%s", th, data))
+				fmt.Println(data, "MultiHash: crc32(th+step1)) ", th, crc)
+				crcSum += crc
+			}
+			tmp <- crcSum //неправильно суммирует
+		}(v)
+		res = append(res, <-tmp)
+		//fmt.Println(data, "MultiHash result:", tmp)
+		//tmp = ""
+
 	}
+	wg.Wait()
 	out <- res
 }
 
@@ -69,36 +102,6 @@ var CombineResults = func(in, out chan interface{}) {
 }
 
 func main() {
-	//FlowJobs := []job{
-	//	job(func(in, out chan interface{}) {
-	//		//out <- 2
-	//		fmt.Println("in: " /*<-in,*/, " | 1 func executed")
-	//	}),
-	//	job(func(in, out chan interface{}) {
-	//		//out <- 3
-	//		fmt.Println("2 func executed. ", "in: " /*, <-in*/)
-	//	}),
-	//}
-	//ExecutePipeline(FlowJobs...)
-
-	/*	FreeFlowJobs := []job{
-			job(func(in, out chan interface{}) {
-				fmt.Println("first ", "cap", cap(out), "ptr", out)
-				out <- "Hello"
-			}),
-			job(func(in, out chan interface{}) {
-				fmt.Println("second", "cap", cap(out), "ptr", out)
-				input := fmt.Sprintf("%v", <-in)
-				input += " world"
-				out <- input
-			}),
-			job(func(in, out chan interface{}) {
-				fmt.Println("third ", "cap", cap(out), "ptr", out)
-				fmt.Println("Full string:", <-in)
-			}),
-		}
-		ExecutePipeline(FreeFlowJobs...)*/
-
 	testExpected := "27225454331033649287118297354036464389062965355426795162684_29568666068035183841425683795340791879727309630931025356555"
 	testResult := "NOT_SET"
 
@@ -115,16 +118,20 @@ func main() {
 		job(CombineResults),
 		job(func(in, out chan interface{}) {
 			dataRaw := <-in
-			fmt.Println("!!", dataRaw)
+			fmt.Println("\033[1;34m", "Result", "\033[0m", dataRaw)
 			data, ok := dataRaw.(string)
 			if !ok {
-				_ = fmt.Errorf("cant convert result data to string")
+				fmt.Printf("cant convert result data to string")
 			}
 			testResult = data
 		}),
 	}
+	start := time.Now()
 
 	ExecutePipeline(hashSignJobs...)
+
+	end := time.Since(start)
+	fmt.Println("\033[1;34m", "Time", "\033[0m", end)
 
 	if testExpected != testResult {
 		fmt.Printf("results not match\nGot: %v\nExpected: %v", testResult, testExpected)
