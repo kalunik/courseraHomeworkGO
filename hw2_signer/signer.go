@@ -27,6 +27,15 @@ func ExecutePipeline(FlowJobs ...job) {
 	wg.Wait()
 }
 
+func workerCrc32(data string) chan string {
+	crc := make(chan string)
+	go func() {
+		defer close(crc)
+		crc <- DataSignerCrc32(data)
+	}()
+	return crc
+}
+
 var SingleHash = func(in, out chan interface{}) {
 	for v := range in {
 		data := fmt.Sprint(v) //md crc : need mutex
@@ -41,19 +50,8 @@ var SingleHash = func(in, out chan interface{}) {
 			//mu.Unlock()
 		}()
 
-		crc := make(chan string)
-		go func() {
-			defer close(crc)
-			//mu.Lock()
-			crc <- DataSignerCrc32(data)
-			//mu.Unlock()
-		}()
-
-		crcMd := make(chan string)
-		go func() {
-			defer close(crcMd)
-			crcMd <- DataSignerCrc32(<-Md)
-		}()
+		crc := workerCrc32(data)
+		crcMd := workerCrc32(<-Md)
 
 		//fmt.Println(data, "SingleHash data", data)
 		//fmt.Println(data, "SingleHash md5(data)", Md)
@@ -66,28 +64,26 @@ var SingleHash = func(in, out chan interface{}) {
 
 var MultiHash = func(in, out chan interface{}) {
 	var (
-		crc, crcSum string
-		res         []string
-		wg          sync.WaitGroup
+		//crc string
+		res []string
+		wg  sync.WaitGroup
 	)
-	tmp := make(chan string)
+	//crc := make(chan string, 7)
 	for v := range in {
 		wg.Add(1)
 		go func(v interface{}) {
-
 			defer wg.Done()
-			data := fmt.Sprint(v)
-			for th := 0; th < 6; th++ {
-				crc = DataSignerCrc32(fmt.Sprintf("%d%s", th, data))
-				fmt.Println(data, "MultiHash: crc32(th+step1)) ", th, crc)
-				crcSum += crc
-			}
-			tmp <- crcSum //неправильно суммирует
-		}(v)
-		res = append(res, <-tmp)
-		//fmt.Println(data, "MultiHash result:", tmp)
-		//tmp = ""
+			crcSum := ""
 
+			for th := 0; th < 6; th++ {
+				crc := workerCrc32(fmt.Sprintf("%d%s", th, v))
+				//fmt.Println(data, "MultiHash: crc32(th+step1)) ", th, crc)
+				crcSum += <-crc
+			}
+
+			fmt.Println("crcSum", crcSum)
+			res = append(res, crcSum)
+		}(v)
 	}
 	wg.Wait()
 	out <- res
