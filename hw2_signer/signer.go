@@ -8,10 +8,7 @@ import (
 	"time"
 )
 
-const (
-	inputMaxSize = 100
-	hashVariance = 6
-)
+const hashVariance = 6
 
 func ExecutePipeline(FlowJobs ...job) {
 	in := make(chan interface{})
@@ -41,36 +38,40 @@ func workerCrc32(data string) chan string {
 	return crc
 }
 
+func printerSingleHash(data string, Md string, crc string, crcMd string) {
+	fmt.Println(data, "SingleHash data", data)
+	fmt.Println(data, "SingleHash md5(data)", Md)
+	fmt.Println(data, "SingleHash crc32(md5(data))", crcMd)
+	fmt.Println(data, "SingleHash crc32(data)", crc)
+	fmt.Printf("%s SingleHash result %s~%s\n", data, crc, crcMd)
+}
+
 var SingleHash = func(in, out chan interface{}) {
+	wg := &sync.WaitGroup{}
 	for v := range in {
-		data := fmt.Sprint(v) //md crc : need mutex
+		data := fmt.Sprint(v)
+		Md := DataSignerMd5(data) //it'll overheat if put in `go`
+		wg.Add(1)
+		go func(data string, Md string) {
+			defer wg.Done()
+			crc := workerCrc32(data)
+			crcMd := workerCrc32(Md)
 
-		//mu := &sync.Mutex{}
+			crcPrint := <-crc
+			crcMdPrint := <-crcMd
+			//printerSingleHash(data, Md, crcPrint, crcMdPrint)
 
-		Md := make(chan string)
-		go func() {
-			defer close(Md)
-			//mu.Lock()
-			Md <- DataSignerMd5(data)
-			//mu.Unlock()
-		}()
-
-		crc := workerCrc32(data)
-		crcMd := workerCrc32(<-Md)
-
-		//fmt.Println(data, "SingleHash data", data)
-		//fmt.Println(data, "SingleHash md5(data)", Md)
-		//fmt.Println(data, "SingleHash crc32(md5(data))", crcMd)
-		//fmt.Println(data, "SingleHash crc32(data)", crc)
-		//fmt.Printf("%s SingleHash result %s~%s\n", data, crc, crcMd)
-		out <- fmt.Sprintf("%s~%s", <-crc, <-crcMd) // out must be in range, so then PANIC happen
+			out <- fmt.Sprintf("%s~%s", crcPrint, crcMdPrint)
+		}(data, Md)
 	}
+	wg.Wait()
 }
 
 var MultiHash = func(in, out chan interface{}) {
 	var (
-		res []string
 		wg  sync.WaitGroup
+		mu  sync.Mutex
+		res []string
 	)
 	for v := range in {
 		wg.Add(1)
@@ -85,14 +86,15 @@ var MultiHash = func(in, out chan interface{}) {
 			}
 
 			manyHashes := make([]string, 0, hashVariance)
-			for _, ch := range crcBuf {
+			for _, ch := range crcBuf { // change '_' to 'th', if u want print
 				manyHashes = append(manyHashes, <-ch)
-				//fmt.Println(data.(string), "MultiHash: crc32(th+step1)) ", th, mh[th])
+				//fmt.Println(data.(string), "MultiHash: crc32(th+step1)) ", th, manyHashes[th])
 			}
-			fmt.Println(manyHashes)
-
+			mu.Lock()
 			res = append(res, strings.Join(manyHashes, ""))
-			//fmt.Println(data, "MultiHash result:", res)
+			mu.Unlock()
+
+			//fmt.Printf("%s MultiHash result: %s\n\n", data, strings.Join(manyHashes, ""))
 		}(v)
 	}
 	wg.Wait()
@@ -104,6 +106,7 @@ var CombineResults = func(in, out chan interface{}) {
 	data := v.([]string)
 
 	sort.Strings(data)
+	//fmt.Println("CombineResults ", strings.Join(data, "_"))
 	out <- strings.Join(data, "_")
 }
 
@@ -111,7 +114,7 @@ func main() {
 	testExpected := "29568666068035183841425683795340791879727309630931025356555_4958044192186797981418233587017209679042592862002427381542"
 	testResult := "NOT_SET"
 
-	inputData := []int{0, 1, 1, 2, 3, 5, 8}
+	inputData := []int{0, 1}
 
 	hashSignJobs := []job{
 		job(func(in, out chan interface{}) {
