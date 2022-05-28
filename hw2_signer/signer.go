@@ -8,6 +8,11 @@ import (
 	"time"
 )
 
+const (
+	inputMaxSize = 100
+	hashVariance = 6
+)
+
 func ExecutePipeline(FlowJobs ...job) {
 	in := make(chan interface{})
 	var wg sync.WaitGroup
@@ -16,11 +21,11 @@ func ExecutePipeline(FlowJobs ...job) {
 		wg.Add(1)
 		out := make(chan interface{})
 
-		go func(j job, in, out chan interface{}) {
+		go func(j job, in chan interface{}) {
 			defer wg.Done()
 			defer close(out)
 			j(in, out)
-		}(j, in, out)
+		}(j, in)
 
 		in = out
 	}
@@ -64,25 +69,30 @@ var SingleHash = func(in, out chan interface{}) {
 
 var MultiHash = func(in, out chan interface{}) {
 	var (
-		//crc string
 		res []string
 		wg  sync.WaitGroup
 	)
-	//crc := make(chan string, 7)
 	for v := range in {
 		wg.Add(1)
-		go func(v interface{}) {
-			defer wg.Done()
-			crcSum := ""
 
-			for th := 0; th < 6; th++ {
-				crc := workerCrc32(fmt.Sprintf("%d%s", th, v))
-				//fmt.Println(data, "MultiHash: crc32(th+step1)) ", th, crc)
-				crcSum += <-crc
+		go func(data interface{}) {
+			defer wg.Done()
+
+			crcBuf := make([]chan string, 0, hashVariance)
+			for th := 0; th < hashVariance; th++ {
+				crc := workerCrc32(fmt.Sprintf("%d%s", th, data))
+				crcBuf = append(crcBuf, crc)
 			}
 
-			fmt.Println("crcSum", crcSum)
-			res = append(res, crcSum)
+			manyHashes := make([]string, 0, hashVariance)
+			for _, ch := range crcBuf {
+				manyHashes = append(manyHashes, <-ch)
+				//fmt.Println(data.(string), "MultiHash: crc32(th+step1)) ", th, mh[th])
+			}
+			fmt.Println(manyHashes)
+
+			res = append(res, strings.Join(manyHashes, ""))
+			//fmt.Println(data, "MultiHash result:", res)
 		}(v)
 	}
 	wg.Wait()
@@ -98,10 +108,10 @@ var CombineResults = func(in, out chan interface{}) {
 }
 
 func main() {
-	testExpected := "27225454331033649287118297354036464389062965355426795162684_29568666068035183841425683795340791879727309630931025356555"
+	testExpected := "29568666068035183841425683795340791879727309630931025356555_4958044192186797981418233587017209679042592862002427381542"
 	testResult := "NOT_SET"
 
-	inputData := []int{0, 2}
+	inputData := []int{0, 1, 1, 2, 3, 5, 8}
 
 	hashSignJobs := []job{
 		job(func(in, out chan interface{}) {
